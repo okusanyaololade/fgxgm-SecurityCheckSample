@@ -9,6 +9,12 @@ const { body, validationResult } = require("express-validator")
 const app = express()
 const PORT = process.env.PORT || 8090
 
+// Check for SESSION_SECRET in production
+if (process.env.NODE_ENV === 'production' && !process.env.SESSION_SECRET) {
+    console.error('ERROR: SESSION_SECRET environment variable must be set in production')
+    process.exit(1)
+}
+
 // Middleware
 app.use(express.json())
 app.use(cors({
@@ -44,6 +50,9 @@ const students = [
     { id: 4, name: "Alice Brown", class: "Grade 11A", age: 16, studentId: "S004", email: "alice@example.com" },
     { id: 5, name: "Charlie Wilson", class: "Grade 11A", age: 17, studentId: "S005", email: "charlie@example.com" }
 ]
+
+// Counter for generating unique student IDs
+let nextStudentId = students.length > 0 ? Math.max(...students.map(s => s.id)) + 1 : 1
 
 // Store unique access tokens for classes
 const classAccessTokens = {}
@@ -192,6 +201,8 @@ app.get("/api/students/:id", requireAdmin, (req, res) => {
 })
 
 // Add new student (admin only)
+// Note: 'class' is used in the API for consistency with the data model, 
+// but destructured as 'className' since 'class' is a reserved keyword in JavaScript
 app.post("/api/students", [
     requireAdmin,
     body('name').notEmpty().trim(),
@@ -213,7 +224,7 @@ app.post("/api/students", [
     }
     
     const newStudent = {
-        id: students.length + 1,
+        id: nextStudentId++,
         name,
         class: className,
         age,
