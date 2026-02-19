@@ -18,6 +18,22 @@ Password: admin123
 ```
 **⚠️ Important: Change these credentials in production!**
 
+### CSRF Protection
+All state-changing endpoints (POST, PUT, DELETE) require a CSRF token. Get a CSRF token before making state-changing requests:
+
+```bash
+curl http://localhost:8090/api/csrf-token -c cookies.txt
+```
+
+Response:
+```json
+{
+  "csrfToken": "xyz123..."
+}
+```
+
+Include the CSRF token in the `_csrf` field in the request body or as an `X-CSRF-Token` header for all state-changing requests.
+
 ## API Endpoints
 
 ### 1. Root Endpoint
@@ -37,13 +53,29 @@ GET /
 }
 ```
 
-### 2. Admin Login
+### 2. Get CSRF Token
+Get a CSRF token for state-changing requests.
+
+**Request:**
+```
+GET /api/csrf-token
+```
+
+**Response:**
+```json
+{
+  "csrfToken": "xyz123..."
+}
+```
+
+### 3. Admin Login
 Authenticate as an admin user.
 
 **Request:**
 ```
 POST /api/auth/login
 Content-Type: application/json
+X-CSRF-Token: xyz123...
 
 {
   "username": "admin",
@@ -69,12 +101,13 @@ Content-Type: application/json
 }
 ```
 
-### 3. Logout
+### 4. Logout
 End the admin session.
 
 **Request:**
 ```
 POST /api/auth/logout
+X-CSRF-Token: xyz123...
 ```
 
 **Response:**
@@ -84,17 +117,19 @@ POST /api/auth/logout
 }
 ```
 
-### 4. Generate Unique Class URL (Admin Only)
+### 5. Generate Unique Class URL (Admin Only)
 Generate a unique, secure URL to access student records for a specific class.
 
 **Request:**
 ```
 POST /api/students/class/:className/generate-url
+X-CSRF-Token: xyz123...
 ```
 
 **Example:**
 ```
 POST /api/students/class/Grade%2010A/generate-url
+X-CSRF-Token: xyz123...
 ```
 
 **Response:**
@@ -204,6 +239,7 @@ Add a new student to the database.
 ```
 POST /api/students
 Content-Type: application/json
+X-CSRF-Token: xyz123...
 
 {
   "name": "New Student",
@@ -307,28 +343,40 @@ Returned when request validation fails.
 5. **Password Hashing**: Admin passwords are hashed using bcryptjs
 6. **CORS Protection**: Cross-origin requests are controlled
 7. **HTTP-only Cookies**: Session cookies are HTTP-only to prevent XSS attacks
+8. **CSRF Protection**: All state-changing endpoints require CSRF tokens to prevent Cross-Site Request Forgery attacks
 
 ## Usage Example
 
 ### Complete Workflow
 
-1. **Admin logs in:**
+1. **Get CSRF token:**
 ```bash
-curl -X POST http://localhost:8090/api/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"username": "admin", "password": "admin123"}' \
+curl -X GET http://localhost:8090/api/csrf-token \
   -c cookies.txt
 ```
 
-2. **Admin generates unique URL for a class:**
+Response will include: `{"csrfToken": "xyz123..."}`
+
+2. **Admin logs in (with CSRF token):**
+```bash
+curl -X POST http://localhost:8090/api/auth/login \
+  -H "Content-Type: application/json" \
+  -H "X-CSRF-Token: xyz123..." \
+  -d '{"username": "admin", "password": "admin123"}' \
+  -b cookies.txt \
+  -c cookies.txt
+```
+
+3. **Admin generates unique URL for a class:**
 ```bash
 curl -X POST http://localhost:8090/api/students/class/Grade%2010A/generate-url \
+  -H "X-CSRF-Token: xyz123..." \
   -b cookies.txt
 ```
 
-3. **Share the generated URL** with authorized personnel (e.g., teachers, school staff)
+4. **Share the generated URL** with authorized personnel (e.g., teachers, school staff)
 
-4. **Access class records using the unique URL** (no authentication needed):
+5. **Access class records using the unique URL** (no authentication needed):
 ```bash
 curl http://localhost:8090/api/students/class/Grade%2010A/550e8400-e29b-41d4-a716-446655440000
 ```

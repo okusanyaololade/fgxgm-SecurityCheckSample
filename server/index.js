@@ -4,6 +4,7 @@ const bcrypt = require("bcryptjs")
 const { v4: uuidv4 } = require("uuid")
 const cors = require("cors")
 const { body, validationResult } = require("express-validator")
+const crypto = require("crypto")
 
 // creating an Express instance
 const app = express()
@@ -31,6 +32,27 @@ app.use(session({
         maxAge: 24 * 60 * 60 * 1000 // 24 hours
     }
 }))
+
+// CSRF protection middleware using double submit cookie pattern
+const csrfProtection = (req, res, next) => {
+    // For GET requests, just generate and store token in session
+    if (req.method === 'GET') {
+        if (!req.session.csrfToken) {
+            req.session.csrfToken = crypto.randomBytes(32).toString('hex')
+        }
+        return next()
+    }
+    
+    // For state-changing requests (POST, PUT, DELETE), verify token
+    const sessionToken = req.session.csrfToken
+    const requestToken = req.headers['x-csrf-token'] || req.body._csrf
+    
+    if (!sessionToken || !requestToken || sessionToken !== requestToken) {
+        return res.status(403).json({ error: 'Invalid CSRF token' })
+    }
+    
+    next()
+}
 
 // In-memory database (for demonstration - use a real database in production)
 const adminUsers = [
@@ -81,6 +103,7 @@ app.get("/", (req, res) => {
         message: "Student Record Database API",
         version: "1.0.0",
         endpoints: {
+            csrf: "GET /api/csrf-token - Get CSRF token",
             login: "POST /api/auth/login",
             logout: "POST /api/auth/logout",
             generateClassUrl: "POST /api/students/class/:className/generate-url (admin only)",
@@ -92,8 +115,14 @@ app.get("/", (req, res) => {
     })
 })
 
+// Get CSRF token
+app.get("/api/csrf-token", csrfProtection, (req, res) => {
+    res.json({ csrfToken: req.session.csrfToken })
+})
+
 // Auth endpoints
 app.post("/api/auth/login", [
+    csrfProtection,
     body('username').notEmpty().trim(),
     body('password').notEmpty()
 ], async (req, res) => {
@@ -129,7 +158,7 @@ app.post("/api/auth/login", [
     })
 })
 
-app.post("/api/auth/logout", (req, res) => {
+app.post("/api/auth/logout", csrfProtection, (req, res) => {
     req.session.destroy((err) => {
         if (err) {
             return res.status(500).json({ error: "Failed to logout" })
@@ -139,7 +168,7 @@ app.post("/api/auth/logout", (req, res) => {
 })
 
 // Generate unique URL for a class (admin only)
-app.post("/api/students/class/:className/generate-url", requireAdmin, (req, res) => {
+app.post("/api/students/class/:className/generate-url", csrfProtection, requireAdmin, (req, res) => {
     const { className } = req.params
     
     // Check if class exists
@@ -204,6 +233,7 @@ app.get("/api/students/:id", requireAdmin, (req, res) => {
 // Note: 'class' is used in the API for consistency with the data model, 
 // but destructured as 'className' since 'class' is a reserved keyword in JavaScript
 app.post("/api/students", [
+    csrfProtection,
     requireAdmin,
     body('name').notEmpty().trim(),
     body('class').notEmpty().trim(),
